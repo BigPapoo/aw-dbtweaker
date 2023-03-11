@@ -17,12 +17,14 @@ To prevent messing with the internals of AppWrite, it simply works by cloning at
 Certainly not the ideal solution as it implies side effects (see comments on Sample usage), but it works for me and I'll be glad with it until AppWrite team provides me a better and more integrated way to do! 😉
 
 # Getting started
+
 This tool uses `NodeJS`. So you need to install a Node environment before going any step further.
 Then:
-- `npm install`
-- Create an AppWrite `API KEY` with at least all `Database` right (`read` and `write` on `databases`, `collections`, `attributes`, `documents`).
-- Optional: duplicate `env.sample` to `.env` and fill the file with your credentials and IDs
-- For help: `node aw-dbtweaker.js --help`
+
+-  `npm install`
+-  Create an AppWrite `API KEY` with at least all `Database` right (`read` and `write` on `databases`, `collections`, `attributes`, `documents`).
+-  Optional: duplicate `env.sample` to `.env` and fill the file with your credentials and IDs
+-  For help: `node aw-dbtweaker.js --help`
 
 ## Environment vars
 
@@ -31,16 +33,16 @@ Rename `env.sample` file to `.env` if needed.
 
 ## Sample usage on collection attributes
 
-❗️❗️❗️ All actions change the attributes order and the documents timestamp ❗️❗️❗️
+❗️❗️❗️ Some actions (\*) change the attributes order and the documents timestamp ❗️❗️❗️
 
 -  Help : `node aw-dbtweaker.js --help`
 -  List attributes : `node aw-dbtweaker.js [options] list`
--  Rename an attribute : `node aw-dbtweaker.js [options] rename old new`
--  Rename and Resize an attribute : `node aw-dbtweaker.js [options] rename old new 50`
--  Resize an attribute : `node aw-dbtweaker.js [options] resize name 50`
+-  Rename an attribute (\*) : `node aw-dbtweaker.js [options] rename old new`
+-  Rename and Resize an attribute (\*) : `node aw-dbtweaker.js [options] rename old new 50`
+-  Resize an attribute (\*) : `node aw-dbtweaker.js [options] resize name 50`
 -  Clone an attribute : `node aw-dbtweaker.js [options] clone orig new`
--  Reorder attributes : `node aw-dbtweaker.js [options] reorder first second...`
--  Delete attributes : `node aw-dbtweaker.js [options] delete name`
+-  Reorder attribute (\*) : `node aw-dbtweaker.js [options] reorder first second...`
+-  Delete attribute : `node aw-dbtweaker.js [options] delete name`
 
 ## 🔥 Warning 🔥
 
