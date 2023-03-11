@@ -12,10 +12,11 @@ const ACT_REORDER = 'reorder'
 const TMP_ATTR_NAME = 'tmp___'
 const CHUNK_SIZE = 100
 const SLEEP_TIMEOUT = 1000 // 1sec
+const API_ENDPOINT = 'http://localhost/v1'   // Can be overriden in .env or with --endpoint
 
 const ERR_NOT_FOUND = 404
 
-let client, db, key, project_id, database_id, collection_id, chunk_size, tmp_attr, opt, verbose
+let client, db, key, project_id, database_id, collection_id, chunk_size, tmp_attr, opt, verbose, api_endpoint
 
 try {
    config_env() // var env
@@ -23,6 +24,7 @@ try {
    // https://www.npmjs.com/package/node-getopt
    opt = getopt.create([
       ['', 'key=ARG', 'API Key'],
+      ['', 'endpoint=ARG', 'API endpoint', API_ENDPOINT],
       ['', 'project=ARG', 'project ID'],
       ['', 'database=ARG', 'database ID'],
       ['', 'collection=ARG', 'collection ID'],
@@ -51,6 +53,7 @@ try {
 
    client = new Client()
    db = new Databases(client)
+   api_endpoint = opt.options.endpoint || process.env.APPWRITE_API_ENDPOINT
    key = opt.options.key || process.env.APPWRITE_API_KEY
    project_id = opt.options.project || process.env.APPWRITE_PROJECT_ID
    database_id = opt.options.database || process.env.APPWRITE_DATABASE_ID
@@ -59,13 +62,35 @@ try {
    tmp_attr = opt.options['tmp-attr']
    verbose = opt.options.verbose || opt.options.v || false
 
-   if (!key || !project_id || !database_id || !collection_id) {
+   console.log(key)
+   if (!api_endpoint) {
+      console.error('Missing endpoint')
+      opt.showHelp()
+      process.exit(1)
+   }
+   if (!key) {
+      console.error('Missing API key')
+      opt.showHelp()
+      process.exit(1)
+   }
+   if (!project_id) {
+      console.error('Missing project ID')
+      opt.showHelp()
+      process.exit(1)
+   }
+   if (!database_id) {
+      console.error('Missing database ID')
+      opt.showHelp()
+      process.exit(1)
+   }
+   if (!collection_id) {
+      console.error('Missing collection ID')
       opt.showHelp()
       process.exit(1)
    }
 
    client
-      .setEndpoint('http://localhost/v1') // Your API Endpoint
+      .setEndpoint(api_endpoint) // Your API Endpoint
       .setProject(project_id) // Your project ID
       .setKey(key) // Your secret API key
       .setSelfSigned() // Use only on dev mode with a self-signed SSL cert
