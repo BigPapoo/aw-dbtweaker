@@ -34,13 +34,13 @@ Rename `env.sample` file to `.env` if needed.
 ❗️❗️❗️ All actions change the attributes order and the documents timestamp ❗️❗️❗️
 
 -  Help : `node aw-dbtweaker.js --help`
--  List attributes : `node aw-dbtweaker.js [--options] list`
--  Rename an attribute : `node aw-dbtweaker.js [--options] rename old new`
--  Rename and Resize an attribute : `node aw-dbtweaker.js [--options] rename old new 50`
--  Resize an attribute : `node aw-dbtweaker.js [--options] resize name 50`
--  Clone an attribute : `node aw-dbtweaker.js [--options] clone orig new`
--  Reorder attributes : `node aw-dbtweaker.js [--options] reorder first second...`
--  Delete attributes : `node aw-dbtweaker.js [--options] delete name`
+-  List attributes : `node aw-dbtweaker.js [options] list`
+-  Rename an attribute : `node aw-dbtweaker.js [options] rename old new`
+-  Rename and Resize an attribute : `node aw-dbtweaker.js [options] rename old new 50`
+-  Resize an attribute : `node aw-dbtweaker.js [options] resize name 50`
+-  Clone an attribute : `node aw-dbtweaker.js [options] clone orig new`
+-  Reorder attributes : `node aw-dbtweaker.js [options] reorder first second...`
+-  Delete attributes : `node aw-dbtweaker.js [options] delete name`
 
 ## 🔥 Warning 🔥
 
