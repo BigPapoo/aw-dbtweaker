@@ -47,3 +47,6 @@ Rename `env.sample` file to `.env` if needed.
 ## 🔥 Warning 🔥
 
 Make a backup before processing!
+
+# Known issues
+Indexes are lost during the `rename`, `resize` and `reorder` actions. A workaround is in progress.
