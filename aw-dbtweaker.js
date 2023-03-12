@@ -47,7 +47,7 @@ try {
          `  - Clone attr. "name" to "fullname" 👉 node aw-dbtweaker.js ${ACT_CLONE} name fullname\n` +
          `  - Clone attr. "name" to "fullname" while resizing it to 50 chars 👉 node aw-dbtweaker.js ${ACT_CLONE} name fullname 50\n` +
          `  - Make attr. "name" and "surname" as first attr. 👉 node aw-dbtweaker.js ${ACT_REORDER} name surname\n` +
-         `\n🔥 WARNING 🔥 all actions update all documents timestamp!\n`
+         `\n🔥 WARNING 🔥 some actions update all documents timestamp!\n`
       )     // bind option 'help' to default action
       .parseSystem() // parse command line
 
@@ -62,7 +62,6 @@ try {
    tmp_attr = opt.options['tmp-attr']
    verbose = opt.options.verbose || opt.options.v || false
 
-   console.log(key)
    if (!api_endpoint) {
       console.error('Missing endpoint')
       opt.showHelp()
@@ -110,23 +109,92 @@ function sleep(duration = SLEEP_TIMEOUT) {
    })
 }
 
-async function waitAvailable(name) {
+async function waitAvailable(name, type = 'attribute') {
    let res
    let loop = true
 
    // Some actions need to wait for completion asynchronously
    while (loop) {
-      res = await db.getAttribute(database_id, collection_id, name)
+      if (verbose) {
+         console.log(`Waiting for ${type} "${name}" to complete...`)
+      }
+      if (type === 'attribute') {
+         res = await db.getAttribute(database_id, collection_id, name)
+      } else if (type === 'index') {
+         res = await db.getIndex(database_id, collection_id, name)
+      } else {
+         throw new Error(`waitAvailable: unknown type "${type}"`)
+      }
       if (res.status === 'failed') {
-         throw new Error(`Waiting for completion on attr "${name}" - Failed!`)
+         throw new Error(`Waiting for completion on ${type} "${name}" - Failed!`)
       }
       loop = (res.status !== 'available')
       if (loop) {
-         if (verbose) {
-            console.log(`Waiting for attr "${name}" to complete...`)
-         }
          await sleep()
       }
+   }
+}
+
+async function waitDelete(name, type = 'attribute') {
+   let loop
+
+   loop = true
+   // Need to wait for deletion du complete asynchronously
+   while (loop) {
+      // Delete will throw an Exception when record really disapears
+      try {
+         console.log(`Waiting for delete ${type} ${name} ...`)
+         if (type === 'attribute') {
+            await db.getAttribute(database_id, collection_id, name)
+         } else if (type === 'index') {
+            await db.getIndex(database_id, collection_id, name)
+         } else {
+            throw new Error(`waitDelete: unknown type "${type}"`)
+         }
+         await sleep()
+      } catch (err) {
+         console.log(`Delete for ${type} ${name} done...`)
+         loop = false
+      }
+   }
+}
+
+async function getIndexes(attr_name) {
+   const idx = await db.listIndexes(database_id, collection_id)
+   return idx.indexes.filter((an_idx) => an_idx.attributes.includes(attr_name))
+}
+
+async function rebuildIndexes(indexes, old_name = null, new_name = null) {
+   if (verbose && (indexes.length <= 0)) {
+      console.log('No index to recreate')
+   }
+   for (const index of indexes) {
+      if (verbose) {
+         console.log(`Recreating index "${index.key}"`)
+      }
+      const attributes = index.attributes.map((attr) => {
+         if (!old_name) {
+            return attr
+         } else {
+            return (attr === old_name) ? new_name : attr
+         }
+      })
+      try {
+         await db.deleteIndex(database_id, collection_id, index.key)
+         await waitDelete(index.key, 'index')
+      } catch (err) {
+         // 404 is OK, means index has been deleted during the action
+         if (err.code !== ERR_NOT_FOUND) {
+            throw err
+         }
+      }
+
+      // console.log(`createIndex(${index.key}, ${index.type}, ${attributes}, ${index.orders})`)
+      // await sleep(2000) // Tweak because of AW v1.2 bug that displays "failed" even if index created!
+      await db.createIndex(database_id, collection_id, index.key, index.type, attributes, index.orders)
+
+      // waitAvailable(index.key, 'index')
+      await sleep(2000) // Tweak because of AW v1.2 bug that displays "failed" even if index created!
    }
 }
 
@@ -154,7 +222,7 @@ async function clone_att(orig_name, new_name, resize = null) {
       } else if (attrib.type === 'double') {
          res = await db.createFloatAttribute(database_id, collection_id, new_name, attrib.required, attrib.min, attrib.max, attrib.default, attrib.array)
       } else if (attrib.type === 'integer') {
-         console.log(attrib)
+         // console.log(attrib)
          // -9999... and 9999...: tweak because real values are rejected by `createIntegerAttribute`
          res = await db.createIntegerAttribute(database_id, collection_id, new_name, attrib.required, (attrib.min < -999999999999999) ? null : attrib.min, (attrib.max > 999999999999999) ? null : attrib.max, attrib.default, attrib.array)
       } else if (attrib.type === 'datetime') {
@@ -202,20 +270,7 @@ async function delete_att(name) {
    let res, loop
 
    res = await db.deleteAttribute(database_id, collection_id, name)
-
-   loop = true
-   // Need to wait for deletion du complete asynchronously
-   while (loop) {
-      // Delete will throw an Exception when record really disapears
-      try {
-         res = await db.getAttribute(database_id, collection_id, name)
-         console.log('Waiting...')
-         await sleep()
-      } catch (err) {
-         console.log('Delete done...')
-         loop = false
-      }
-   }
+   await waitDelete(name)
 }
 
 async function rename_att(name, new_name) {
@@ -225,12 +280,14 @@ async function rename_att(name, new_name) {
       - clone TMP to B
       - drop TMP
     */
+   const indexes = await getIndexes(name)
    await clone_att(name, tmp_attr)
    await waitAvailable(tmp_attr)
    await delete_att(name)
    await clone_att(tmp_attr, new_name)
    await waitAvailable(new_name)
    await delete_att(tmp_attr)
+   await rebuildIndexes(indexes, name, new_name)
 }
 
 async function reorder(arr) {
@@ -268,11 +325,18 @@ async function doJob() {
    if (opt.argv[0] === ACT_LIST) {
       const attribs = await db.listAttributes(database_id, collection_id)
       console.log(attribs)
-   } else if (opt.argv[0] === ACT_CLONE) {
-      if ((opt.argv.length === 4) && (Number(opt.argv[3]) > 0)) {
+   } else if ((opt.argv[0] === ACT_CLONE) && (opt.argv.length >= 3)) {
+      const indexes = await getIndexes(opt.argv[1])
+      if ((opt.argv.length > 3) && (Number(opt.argv[3]) > 0)) {
          await clone_att(opt.argv[1], opt.argv[2], opt.argv[3])
       } else {
          await clone_att(opt.argv[1], opt.argv[2])
+      }
+      if (indexes.length > 0) {
+         console.log("CLONING do not clone indexes.\nHere are the original indexes (add them manually if needed):")
+         for (const index of indexes) {
+            console.log(`Key: ${index.key}, Type: ${index.type}, Attributes: ${index.attributes}, Orders: ${index.orders}`)
+         }
       }
    } else if ((opt.argv[0] === ACT_RESIZE) && (opt.argv.length === 3) && (Number(opt.argv[2]) > 0)) {
       /* Resizing involves :
