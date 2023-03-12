@@ -49,4 +49,5 @@ Rename `env.sample` file to `.env` if needed.
 Make a backup before processing!
 
 # Known issues
-Indexes are lost during the `rename`, `resize` and `reorder` actions. A workaround is in progress.
+
+Index recreation should be handled but their is a bug in AW v1.2 that shows them "failed", so I introduced a tweak (sleep 2sec) after index creation.
