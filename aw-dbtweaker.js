@@ -1,9 +1,11 @@
-import { Client, Databases, Query } from 'node-appwrite'
+import { Client, Databases, Query, ID } from 'node-appwrite'
 import { config as config_env } from 'dotenv'
 import getopt from 'node-getopt'
 
 const ACT_LIST = 'list'
 const ACT_CLONE = 'clone'
+const ACT_CLONE_COLLECTION = 'clone_collection'
+const ACT_DELETE_COLLECTION = 'delete_collection'
 const ACT_RESIZE = 'resize'
 const ACT_RENAME = 'rename'
 const ACT_DELETE = 'delete'
@@ -16,7 +18,7 @@ const API_ENDPOINT = 'http://localhost/v1'   // Can be overriden in .env or with
 
 const ERR_NOT_FOUND = 404
 
-let client, db, key, project_id, database_id, collection_id, chunk_size, tmp_attr, opt, verbose, api_endpoint
+let client, db, key, project_id, database_id, collection_id, chunk_size, tmp_attr, opt, verbose, api_endpoint, with_data
 
 try {
    config_env() // var env
@@ -28,6 +30,7 @@ try {
       ['', 'project=ARG', 'project ID'],
       ['', 'database=ARG', 'database ID'],
       ['', 'collection=ARG', 'collection ID'],
+      ['', 'with-data', 'clone documents when cloning collection'],
       ['', 'chunk-size=ARG', 'nb of documents at once, during document processing', CHUNK_SIZE],
       ['', 'tmp-attr=ARG', 'temporary attribute name', TMP_ATTR_NAME],
       ['v', 'verbose', 'be more verbose'],
@@ -43,6 +46,8 @@ try {
          `  - Rename attribute: ${ACT_RENAME} name new_name\n` +
          `  - Delete attribute: ${ACT_DELETE} name\n` +
          `  - Reorder attributes: ${ACT_REORDER} name...\n` +
+         `  - Clone collection: ${ACT_CLONE_COLLECTION} name clone_name\n` +
+         `  - Delete collection: ${ACT_DELETE_COLLECTION} name\n` +
          "\nSome examples:\n" +
          `  - Clone attr. "name" to "fullname" 👉 node aw-dbtweaker.js ${ACT_CLONE} name fullname\n` +
          `  - Clone attr. "name" to "fullname" while resizing it to 50 chars 👉 node aw-dbtweaker.js ${ACT_CLONE} name fullname 50\n` +
@@ -60,6 +65,7 @@ try {
    collection_id = opt.options.collection
    chunk_size = Number(opt.options['chunk-size'])
    tmp_attr = opt.options['tmp-attr']
+   with_data = opt.options['with-data']
    verbose = opt.options.verbose || opt.options.v || false
 
    if (!api_endpoint) {
@@ -99,8 +105,7 @@ try {
 } catch (err) {
    console.error('Error: ', err)
    process.exit(1)
-} finally {
-   // console.log('Terminé...')
+   // } finally {
 }
 
 function sleep(duration = SLEEP_TIMEOUT) {
@@ -110,6 +115,10 @@ function sleep(duration = SLEEP_TIMEOUT) {
 }
 
 async function waitAvailable(name, type = 'attribute') {
+   return await _waitAvailable(database_id, collection_id, name, type = 'attribute')
+}
+
+async function _waitAvailable(_database_id, _collection_id, name, type = 'attribute') {
    let res
    let loop = true
 
@@ -119,9 +128,9 @@ async function waitAvailable(name, type = 'attribute') {
          console.log(`Waiting for ${type} "${name}" to complete...`)
       }
       if (type === 'attribute') {
-         res = await db.getAttribute(database_id, collection_id, name)
+         res = await db.getAttribute(_database_id, _collection_id, name)
       } else if (type === 'index') {
-         res = await db.getIndex(database_id, collection_id, name)
+         res = await db.getIndex(_database_id, _collection_id, name)
       } else {
          throw new Error(`waitAvailable: unknown type "${type}"`)
       }
@@ -153,7 +162,7 @@ async function waitDelete(name, type = 'attribute') {
          }
          await sleep()
       } catch (err) {
-         console.log(`Delete for ${type} ${name} done...`)
+         console.log(`Delete ${type} ${name} done...`)
          loop = false
       }
    }
@@ -189,73 +198,73 @@ async function rebuildIndexes(indexes, old_name = null, new_name = null) {
          }
       }
 
-      // console.log(`createIndex(${index.key}, ${index.type}, ${attributes}, ${index.orders})`)
-      // await sleep(2000) // Tweak because of AW v1.2 bug that displays "failed" even if index created!
       await db.createIndex(database_id, collection_id, index.key, index.type, attributes, index.orders)
-
-      // waitAvailable(index.key, 'index')
-      await sleep(2000) // Tweak because of AW v1.2 bug that displays "failed" even if index created!
+      await waitAvailable(index.key, 'index')
    }
 }
 
 async function clone_att(orig_name, new_name, resize = null) {
+   return await _clone_att(database_id, collection_id, orig_name, collection_id, new_name, resize)
+}
+
+async function _clone_att(_database_id, orig_collection_id, orig_name, dest_collection_id, new_name, resize = null) {
    let res
 
    if (verbose) {
       console.log(`Cloning attr "${orig_name}" into "${new_name}"`)
    }
    try {
-      const attrib = await db.getAttribute(database_id, collection_id, orig_name)
-      // console.log(attrib)
+      const attrib = await db.getAttribute(_database_id, orig_collection_id, orig_name)
       if ((attrib.type === 'string') && (attrib.format === 'email')) {
-         res = await db.createEmailAttribute(database_id, collection_id, new_name, attrib.required, attrib.default, attrib.array)
+         res = await db.createEmailAttribute(_database_id, dest_collection_id, new_name, attrib.required, attrib.default, attrib.array)
       } else if ((attrib.type === 'string') && (attrib.format === 'enum')) {
-         res = await db.createEnumAttribute(database_id, collection_id, new_name, attrib.elements, attrib.required, attrib.default, attrib.array)
+         res = await db.createEnumAttribute(_database_id, dest_collection_id, new_name, attrib.elements, attrib.required, attrib.default, attrib.array)
       } else if ((attrib.type === 'string') && (attrib.format === 'ip')) {
-         res = await db.createIpAttribute(database_id, collection_id, new_name, attrib.required, attrib.default, attrib.array)
+         res = await db.createIpAttribute(_database_id, dest_collection_id, new_name, attrib.required, attrib.default, attrib.array)
       } else if ((attrib.type === 'string') && (attrib.format === 'url')) {
-         res = await db.createUrlAttribute(database_id, collection_id, new_name, attrib.required, attrib.default, attrib.array)
+         res = await db.createUrlAttribute(_database_id, dest_collection_id, new_name, attrib.required, attrib.default, attrib.array)
       } else if (attrib.type === 'string') {
-         res = await db.createStringAttribute(database_id, collection_id, new_name, resize || attrib.size, attrib.required, attrib.default, attrib.array)
+         res = await db.createStringAttribute(_database_id, dest_collection_id, new_name, resize || attrib.size, attrib.required, attrib.default, attrib.array)
       } else if (attrib.type === 'boolean') {
-         res = await db.createBooleanAttribute(database_id, collection_id, new_name, attrib.required, attrib.default, attrib.array)
+         res = await db.createBooleanAttribute(_database_id, dest_collection_id, new_name, attrib.required, attrib.default, attrib.array)
       } else if (attrib.type === 'double') {
-         res = await db.createFloatAttribute(database_id, collection_id, new_name, attrib.required, attrib.min, attrib.max, attrib.default, attrib.array)
+         res = await db.createFloatAttribute(_database_id, dest_collection_id, new_name, attrib.required, attrib.min, attrib.max, attrib.default, attrib.array)
       } else if (attrib.type === 'integer') {
-         // console.log(attrib)
          // -9999... and 9999...: tweak because real values are rejected by `createIntegerAttribute`
-         res = await db.createIntegerAttribute(database_id, collection_id, new_name, attrib.required, (attrib.min < -999999999999999) ? null : attrib.min, (attrib.max > 999999999999999) ? null : attrib.max, attrib.default, attrib.array)
+         res = await db.createIntegerAttribute(_database_id, dest_collection_id, new_name, attrib.required, (attrib.min < -999999999999999) ? null : attrib.min, (attrib.max > 999999999999999) ? null : attrib.max, attrib.default, attrib.array)
       } else if (attrib.type === 'datetime') {
-         res = await db.createDatetimeAttribute(database_id, collection_id, new_name, attrib.required, attrib.default, attrib.array)
+         res = await db.createDatetimeAttribute(_database_id, dest_collection_id, new_name, attrib.required, attrib.default, attrib.array)
       }
 
       // Wait for changes to complete async
-      await waitAvailable(new_name)
+      await _waitAvailable(_database_id, dest_collection_id, new_name)
 
-      res = await db.listDocuments(database_id, collection_id, [
-         Query.limit(chunk_size),
-         Query.offset(0)
-      ])
-      // console.log(res)
+      // Duplicate documents only when cloning attribs in the same collection
+      if (orig_collection_id === dest_collection_id) {
+         res = await db.listDocuments(_database_id, collection_id, [
+            Query.limit(chunk_size),
+            Query.offset(0)
+         ])
 
-      let offset = 0
-      let total = res.total
+         let offset = 0
+         let total = res.total
 
-      while (offset < total) {
-         if (verbose) {
-            console.log(`Copying data [${offset}..${Math.min(total, offset + chunk_size)}] from attr "${orig_name}" into "${new_name}"`)
-         }
-         for (const doc of res.documents) {
-            res = await db.updateDocument(database_id, collection_id, doc['$id'], {
-               [new_name]: doc[orig_name]
-            })
-         }
-         offset += chunk_size
-         if (offset < total) {
-            res = await db.listDocuments(database_id, collection_id, [
-               Query.limit(chunk_size),
-               Query.offset(offset)
-            ])
+         while (offset < total) {
+            if (verbose) {
+               console.log(`Copying data [${offset}..${Math.min(total, offset + chunk_size)}] from attr "${orig_name}" into "${new_name}"`)
+            }
+            for (const doc of res.documents) {
+               res = await db.updateDocument(_database_id, collection_id, doc['$id'], {
+                  [new_name]: doc[orig_name]
+               })
+            }
+            offset += chunk_size
+            if (offset < total) {
+               res = await db.listDocuments(_database_id, collection_id, [
+                  Query.limit(chunk_size),
+                  Query.offset(offset)
+               ])
+            }
          }
       }
    } catch (err) {
@@ -290,7 +299,7 @@ async function rename_att(name, new_name) {
    await rebuildIndexes(indexes, name, new_name)
 }
 
-async function reorder(arr) {
+async function reorder_att(arr) {
    /* Reorder attribs:
       - First ones will be those provided as arguments
       - Then keeps the others in same order as they are
@@ -298,16 +307,12 @@ async function reorder(arr) {
    const attribs = (await db.listAttributes(database_id, collection_id)).attributes.map(attr => attr.key)
    const new_order = attribs.sort((attr1, attr2) => {
       if (arr.includes(attr1) && !arr.includes(attr2)) {
-         // console.log(`1) ${attr1} vs ${attr2} = -1`)
          return -1
       } else if (!arr.includes(attr1) && arr.includes(attr2)) {
-         // console.log(`2) ${attr1} vs ${attr2} = 1`)
          return 1
       } else if (!arr.includes(attr1) && !arr.includes(attr2)) {
-         // console.log(`3) ${attr1} vs ${attr2} = ${attr1.localeCompare(attr2)}`)
          return attribs.indexOf(attr1) - attribs.indexOf(attr2)
       } else {
-         // console.log(`4) ${attr1} vs ${attr2} = ${arr.indexOf(attr1) - arr.indexOf(attr2)}`)
          return arr.indexOf(attr1) - arr.indexOf(attr2)
       }
    })
@@ -316,6 +321,58 @@ async function reorder(arr) {
          console.log(`Processing rename on "${attr}"`)
       }
       await rename_att(attr, attr)
+   }
+}
+
+async function clone_collection(new_name) {
+   let res
+
+   res = await db.getCollection(database_id, collection_id)
+   await db.createCollection(database_id, new_name, new_name, [], res.documentSecurity)
+   const attribs = await db.listAttributes(database_id, collection_id)
+   for (const an_attrib of attribs.attributes) {
+      await _clone_att(database_id, collection_id, an_attrib.key, new_name, an_attrib.key)
+      // await _waitAvailable(database_id, new_name, an_attrib.key)
+   }
+
+   const all_indexes = await db.listIndexes(database_id, collection_id)
+   for (const index of all_indexes.indexes) {
+      await db.createIndex(database_id, new_name, index.key, index.type, index.attributes, index.orders)
+   }
+
+   // await sleep(2000)
+
+   // Clone data
+   if (with_data) {
+      res = await db.listDocuments(database_id, collection_id, [
+         Query.limit(chunk_size),
+         Query.offset(0)
+      ])
+
+      let offset = 0
+      let total = res.total
+
+      while (offset < total) {
+         if (verbose) {
+            console.log(`Copying data [${offset}..${Math.min(total, offset + chunk_size)}] from collection "${collection_id}" into "${new_name}"`)
+         }
+         for (let doc of res.documents) {
+            delete doc['$id']
+            delete doc['$createdAt']
+            delete doc['$updatedAt']
+            delete doc['$permissions']
+            delete doc['$collectionId']
+            delete doc['$databaseId']
+            res = await db.createDocument(database_id, new_name, ID.unique(), doc)
+         }
+         offset += chunk_size
+         if (offset < total) {
+            res = await db.listDocuments(database_id, collection_id, [
+               Query.limit(chunk_size),
+               Query.offset(offset)
+            ])
+         }
+      }
    }
 }
 
@@ -354,7 +411,11 @@ async function doJob() {
    } else if (opt.argv[0] === ACT_DELETE) {
       await delete_att(opt.argv[1])
    } else if (opt.argv[0] === ACT_REORDER) {
-      await reorder(opt.argv)
+      await reorder_att(opt.argv)
+   } else if ((opt.argv[0] === ACT_CLONE_COLLECTION) && (opt.argv.length == 2)) {
+      await clone_collection(opt.argv[1])
+   } else if (opt.argv[0] === ACT_DELETE_COLLECTION) {
+      await db.deleteCollection(database_id, collection_id)
    } else {
       opt.showHelp()
       process.exit(0)

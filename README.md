@@ -3,6 +3,10 @@
 This tool provides a way for people who, like me, are missing a feature to rename, reorder or resize attributes in AppWrite collections.
 Hopefully AppWrite team will provide one soon... Until then this little script can help.
 
+## What it can do on collections
+
+-  Cloning
+
 ## What it can do on attributes
 
 -  Renaming
@@ -49,5 +53,3 @@ Rename `env.sample` file to `.env` if needed.
 Make a backup before processing!
 
 # Known issues
-
-Index recreation should be handled but their is a bug in AW v1.2 that shows them "failed", so I introduced a tweak (sleep 2sec) after index creation.
