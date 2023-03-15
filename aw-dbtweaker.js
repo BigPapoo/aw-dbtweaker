@@ -6,6 +6,7 @@ const ACT_LIST = 'list'
 const ACT_CLONE = 'clone'
 const ACT_CLONE_COLLECTION = 'clone_collection'
 const ACT_DELETE_COLLECTION = 'delete_collection'
+const ACT_EMPTY_COLLECTION = 'empty_collection'
 const ACT_RESIZE = 'resize'
 const ACT_RENAME = 'rename'
 const ACT_DELETE = 'delete'
@@ -48,6 +49,7 @@ try {
          `  - Reorder attributes: ${ACT_REORDER} name...\n` +
          `  - Clone collection: ${ACT_CLONE_COLLECTION} name clone_name\n` +
          `  - Delete collection: ${ACT_DELETE_COLLECTION} name\n` +
+         `  - Empty collection: ${ACT_EMPTY_COLLECTION} name\n` +
          "\nSome examples:\n" +
          `  - Clone attr. "name" to "fullname" 👉 node aw-dbtweaker.js ${ACT_CLONE} name fullname\n` +
          `  - Clone attr. "name" to "fullname" while resizing it to 50 chars 👉 node aw-dbtweaker.js ${ACT_CLONE} name fullname 50\n` +
@@ -115,7 +117,7 @@ function sleep(duration = SLEEP_TIMEOUT) {
 }
 
 async function waitAvailable(name, type = 'attribute') {
-   return await _waitAvailable(database_id, collection_id, name, type = 'attribute')
+   return await _waitAvailable(database_id, collection_id, name, type)
 }
 
 async function _waitAvailable(_database_id, _collection_id, name, type = 'attribute') {
@@ -376,6 +378,17 @@ async function clone_collection(new_name) {
    }
 }
 
+async function emptyCollection(name) {
+   const docs = await db.listDocuments(database_id, name)
+
+   if (verbose) {
+      console.log(`Deleting ${docs.total} documents in collection "${name}"`)
+   }
+   for (const doc of docs.documents) {
+      db.deleteDocument(database_id, name, doc['$id'])
+   }
+}
+
 async function doJob() {
    let res
 
@@ -416,6 +429,8 @@ async function doJob() {
       await clone_collection(opt.argv[1])
    } else if (opt.argv[0] === ACT_DELETE_COLLECTION) {
       await db.deleteCollection(database_id, collection_id)
+   } else if (opt.argv[0] === ACT_EMPTY_COLLECTION) {
+      await emptyCollection(collection_id)
    } else {
       opt.showHelp()
       process.exit(0)
